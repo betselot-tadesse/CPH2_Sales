@@ -393,6 +393,59 @@ const CallPanel = ({ onSaveRecord }: { onSaveRecord: (record: CallRecord) => voi
 
 // 3. Records View
 const RecordsView = ({ records }: { records: CallRecord[] }) => {
+  
+  const handleExportExcel = () => {
+    const headers = ['Time', 'Room Number', 'Call Outcome', 'Order Status', 'Items', 'Total Amount (AED)'];
+    const csvContent = [
+      headers.join(','),
+      ...records.map(r => {
+        const items = r.orderedItems.map(i => `${i.quantity}x ${i.name}`).join(' | ');
+        return [
+          new Date(r.timestamp).toLocaleTimeString(),
+          r.roomNumber,
+          r.outcome,
+          r.orderStatus,
+          `"${items}"`,
+          r.totalAmount
+        ].join(',');
+      })
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `sales_report_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
+  const handleExportPDF = () => {
+    const printWindow = window.open('', '', 'height=600,width=800');
+    if(printWindow) {
+        printWindow.document.write('<html><head><title>Sales Report</title>');
+        printWindow.document.write('<style>body{font-family: sans-serif; padding: 20px;} table{width:100%; border-collapse: collapse; margin-top:20px;} th, td{border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 12px;} th{background-color: #f2f2f2;} h2{color: #333;}</style>');
+        printWindow.document.write('</head><body>');
+        printWindow.document.write(`<h2>Daily Sales Report - ${new Date().toLocaleDateString()}</h2>`);
+        printWindow.document.write('<table><thead><tr><th>Time</th><th>Room</th><th>Status</th><th>Result</th><th>Items</th><th>Amount</th></tr></thead><tbody>');
+        records.forEach(r => {
+            const items = r.orderedItems.map(i => `${i.quantity}x ${i.name}`).join(', ');
+            printWindow.document.write(`<tr><td>${new Date(r.timestamp).toLocaleTimeString()}</td><td>${r.roomNumber}</td><td>${r.outcome}</td><td>${r.orderStatus}</td><td>${items || '-'}</td><td>${r.totalAmount} AED</td></tr>`);
+        });
+        printWindow.document.write('</tbody></table>');
+        printWindow.document.write('</body></html>');
+        printWindow.document.close();
+        setTimeout(() => {
+           printWindow.print();
+           printWindow.close();
+        }, 500);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -401,10 +454,16 @@ const RecordsView = ({ records }: { records: CallRecord[] }) => {
           <p className="text-slate-500">Track all call activities for today</p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 text-sm font-medium transition-colors">
+          <button 
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 text-sm font-medium transition-colors"
+          >
             <FileSpreadsheet size={16} /> Export Excel
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 text-sm font-medium transition-colors">
+          <button 
+            onClick={handleExportPDF}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 text-sm font-medium transition-colors"
+          >
             <FileText size={16} /> Export PDF
           </button>
         </div>
@@ -590,7 +649,15 @@ const ReportView = ({ records }: { records: CallRecord[] }) => {
 };
 
 // 5. Settings View
-const SettingsView = ({ resetData }: { resetData: () => void }) => {
+const SettingsView = ({ 
+  resetData, 
+  autoResetEnabled, 
+  setAutoResetEnabled 
+}: { 
+  resetData: () => void, 
+  autoResetEnabled: boolean, 
+  setAutoResetEnabled: (val: boolean) => void 
+}) => {
   return (
     <div className="max-w-2xl mx-auto space-y-8">
       <h2 className="text-2xl font-bold text-slate-800">System Settings</h2>
@@ -614,9 +681,14 @@ const SettingsView = ({ resetData }: { resetData: () => void }) => {
             <h3 className="font-medium text-slate-900">Auto-Reset</h3>
             <p className="text-sm text-slate-500">Clear daily data at 04:00 AM</p>
           </div>
-          <div className="w-11 h-6 bg-indigo-600 rounded-full relative cursor-pointer">
-            <div className="w-5 h-5 bg-white rounded-full absolute top-0.5 right-0.5 shadow-sm"></div>
-          </div>
+          <button 
+            onClick={() => setAutoResetEnabled(!autoResetEnabled)}
+            className={`w-11 h-6 rounded-full relative transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${autoResetEnabled ? 'bg-indigo-600' : 'bg-slate-200'}`}
+          >
+            <span 
+              className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform duration-200 ease-in-out shadow-sm ${autoResetEnabled ? 'translate-x-5' : 'translate-x-0.5'}`}
+            />
+          </button>
         </div>
 
         <div className="p-6 flex items-center justify-between">
@@ -625,11 +697,7 @@ const SettingsView = ({ resetData }: { resetData: () => void }) => {
             <p className="text-sm text-slate-500">Manually reset all of today's data</p>
           </div>
           <button 
-            onClick={() => {
-              if(confirm("Are you sure you want to clear all of today's records? This cannot be undone.")) {
-                resetData();
-              }
-            }}
+            onClick={resetData}
             className="px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
           >
             Reset Dashboard Data
@@ -654,33 +722,69 @@ function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // New State for Auto Reset
+  const [autoResetEnabled, setAutoResetEnabled] = useState(() => {
+    const saved = localStorage.getItem('cp-auto-reset-enabled');
+    // Default to true if not set, or parse boolean
+    return saved !== null ? saved === 'true' : true;
+  });
+  
+  // New State for Toast
+  const [showToast, setShowToast] = useState(false);
+
   // Persist records
   useEffect(() => {
     localStorage.setItem('cp-dashboard-records', JSON.stringify(records));
   }, [records]);
 
-  // Auto-reset at 4AM logic (Simulated check on mount)
+  // Persist Auto Reset setting
   useEffect(() => {
-    const lastReset = localStorage.getItem('cp-last-reset');
-    const now = new Date();
-    const todayStr = now.toDateString();
+    localStorage.setItem('cp-auto-reset-enabled', String(autoResetEnabled));
+  }, [autoResetEnabled]);
+
+  // Auto-reset at 4AM logic
+  useEffect(() => {
+    const checkReset = () => {
+        if (!autoResetEnabled) return;
+        
+        const lastReset = localStorage.getItem('cp-last-reset');
+        const now = new Date();
+        const todayStr = now.toDateString();
+        
+        // Reset condition: It is past 4 AM AND we haven't reset today yet
+        if (now.getHours() >= 4 && lastReset !== todayStr) {
+           setRecords([]); 
+           localStorage.setItem('cp-last-reset', todayStr);
+           console.log("System Auto-Reset executed");
+        }
+    };
+
+    // Check on mount
+    checkReset();
     
-    // If we haven't reset today and it's past 4 AM, or if it's a new day entirely
-    // Simplification: Just reset if date changed for demo purposes, 
-    // in real app we check time precisely.
-    if (lastReset !== todayStr && now.getHours() >= 4) {
-      // Optional: setRecords([]); 
-      // localStorage.setItem('cp-last-reset', todayStr);
-    }
-  }, []);
+    // Check every minute
+    const interval = setInterval(checkReset, 60000);
+    
+    return () => clearInterval(interval);
+  }, [autoResetEnabled]);
 
   const handleSaveRecord = (record: CallRecord) => {
     setRecords(prev => [...prev, record]);
   };
 
   const handleResetData = () => {
-    setRecords([]);
-    localStorage.removeItem('cp-dashboard-records');
+    if(window.confirm("Are you sure you want to clear all of today's records? This cannot be undone.")) {
+        setRecords([]);
+        localStorage.removeItem('cp-dashboard-records');
+        
+        // Show toast
+        setShowToast(true);
+        
+        // Hide toast after 1 second
+        setTimeout(() => {
+            setShowToast(false);
+        }, 1000);
+    }
   };
 
   const renderView = () => {
@@ -710,14 +814,18 @@ function App() {
       case 'daily-report':
         return <ReportView records={records} />;
       case 'settings':
-        return <SettingsView resetData={handleResetData} />;
+        return <SettingsView 
+                  resetData={handleResetData} 
+                  autoResetEnabled={autoResetEnabled}
+                  setAutoResetEnabled={setAutoResetEnabled}
+                />;
       default:
         return <CallPanel onSaveRecord={handleSaveRecord} />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex font-sans">
+    <div className="min-h-screen bg-slate-100 flex font-sans relative">
       <Sidebar 
         activeView={activeView} 
         setActiveView={setActiveView} 
@@ -758,6 +866,14 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Toast Notification */}
+      {showToast && (
+        <div className="fixed bottom-6 right-6 bg-slate-800 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-in slide-in-from-bottom-5 fade-in duration-300 z-50">
+          <CheckCircle2 className="text-emerald-400" size={20} />
+          <span className="font-medium">Data has been reset</span>
+        </div>
+      )}
     </div>
   );
 }
