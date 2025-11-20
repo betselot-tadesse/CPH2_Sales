@@ -439,9 +439,10 @@ const RecordsView = ({ records }: { records: CallRecord[] }) => {
         printWindow.document.write('</tbody></table>');
         printWindow.document.write('</body></html>');
         printWindow.document.close();
+        printWindow.focus();
         setTimeout(() => {
            printWindow.print();
-           printWindow.close();
+           // Don't auto-close, let user confirm/cancel print and close manually.
         }, 500);
     }
   };
